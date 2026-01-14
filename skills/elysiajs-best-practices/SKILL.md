@@ -7,7 +7,7 @@ description: ElysiaJS performance optimization and best practices guide. Use whe
 
 ## Overview
 
-Comprehensive performance optimization guide for ElysiaJS and Bun applications, containing 35+ rules across 8 categories. Rules are prioritized by impact to guide automated refactoring and code generation.
+Comprehensive performance optimization guide for ElysiaJS and Bun applications, containing 36+ rules across 8 categories. Rules are prioritized by impact to guide automated refactoring and code generation.
 
 ElysiaJS is a high-performance TypeScript framework built for Bun that leverages static code analysis (Sucrose) and AOT compilation to achieve near-native performance, often outperforming Node.js frameworks by 2-10×.
 
@@ -65,6 +65,7 @@ Rules are prioritized by impact:
 ### Async & Performance Patterns
 
 - Use `Promise.all()` for parallel operations
+- Use `better-all` for dependency-based parallelization (2-10× improvement)
 - Defer `await` until data is needed
 - Stream responses with generator functions
 - Use Server-Sent Events for real-time updates

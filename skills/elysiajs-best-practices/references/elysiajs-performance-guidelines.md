@@ -223,6 +223,46 @@ const [user, posts, comments] = await Promise.all([
 ])
 ```
 
+### Use better-all for Dependency-Based Parallelization
+
+For operations with partial dependencies, use `better-all` to maximize parallelism:
+
+```typescript
+import { all } from 'better-all'
+
+app.get('/dashboard/:userId', async ({ params }) => {
+  const { user, profile, config, posts } = await all({
+    // Starts immediately
+    async user() {
+      return db.users.findUnique({ where: { id: params.userId } })
+    },
+
+    // Starts immediately (independent)
+    async config() {
+      return db.configs.findUnique({ where: { key: 'dashboard' } })
+    },
+
+    // Waits only for user.id
+    async profile() {
+      const u = await this.$.user
+      return db.profiles.findUnique({ where: { userId: u.id } })
+    },
+
+    // Waits for both user and config
+    async posts() {
+      const [u, c] = await Promise.all([this.$.user, this.$.config])
+      return db.posts.findMany({
+        where: { userId: u.id },
+        take: c.postsLimit
+      })
+    }
+  })
+
+  return { user, profile, posts, config }
+  // Total: ~100ms (all overlap optimally)
+})
+```
+
 ### Defer await Until Data is Needed
 
 Move await into branches or as late as possible:
@@ -408,6 +448,7 @@ app.trace(async ({ request, onHandle }) => {
 ### High Impact
 - ✅ Order hooks before routes
 - ✅ Use Promise.all() for parallel operations
+- ✅ Use better-all for dependency-based parallelization
 - ✅ Defer await until needed
 - ✅ Use derive/resolve correctly
 
