@@ -40,8 +40,9 @@ Rules are prioritized by impact:
 **Eliminate Waterfalls:**
 - Defer await until needed (move into branches)
 - Use `Promise.all()` for independent async operations
+- Use `better-all` for automatic dependency-based parallelization
 - Start promises early, await late
-- Use `Promise.allSettled()` for partial dependencies
+- Use `Promise.allSettled()` for partial failures
 - Use Suspense with async components to stream content
 
 **Reduce Bundle Size:**

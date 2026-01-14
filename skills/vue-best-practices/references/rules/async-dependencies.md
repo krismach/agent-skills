@@ -1,13 +1,13 @@
 ---
-title: Start Promises Early, Await Late
-impact: HIGH
-impactDescription: reduces waterfall latency
-tags: async, promises, parallelization
+title: Dependency-Based Parallelization
+impact: CRITICAL
+impactDescription: 2-10× improvement
+tags: async, promises, parallelization, dependencies, better-all
 ---
 
-## Start Promises Early, Await Late
+## Dependency-Based Parallelization
 
-When operations have partial dependencies, start all promises immediately but only await when you need their results.
+When operations have partial dependencies, maximize parallelism by starting all promises at the earliest possible moment.
 
 **Incorrect (sequential waterfall):**
 
@@ -76,4 +76,106 @@ export async function useUserDashboard(userId: string) {
 }
 ```
 
-Reference: [MDN Promise.allSettled](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/allSettled)
+**Best: Automatic parallelization with better-all:**
+
+For complex dependency chains, use `better-all` to automatically maximize parallelism:
+
+```typescript
+import { all } from 'better-all'
+
+// Incorrect: Manual orchestration, config waits for profile unnecessarily
+export async function usePostDetails(postId: string) {
+  const [post, config] = await Promise.all([
+    fetchPost(postId),
+    fetchConfig()
+  ])
+  const profile = await fetchProfile(post.authorId) // Config blocked by this
+
+  return { post, config, profile }
+}
+
+// Correct: better-all automatically parallelizes config with profile
+export async function usePostDetails(postId: string) {
+  const { post, config, profile } = await all({
+    async post() {
+      return fetchPost(postId)
+    },
+    async config() {
+      return fetchConfig() // Runs immediately, parallel with post
+    },
+    async profile() {
+      // Waits only for post, runs parallel with config
+      return fetchProfile((await this.$.post).authorId)
+    }
+  })
+
+  return { post, config, profile }
+}
+```
+
+**In Vue composables:**
+
+```typescript
+// composables/useUserContent.ts
+import { all } from 'better-all'
+
+export async function useUserContent(userId: string) {
+  const data = await all({
+    async user() {
+      return fetchUser(userId)
+    },
+    async settings() {
+      return fetchSettings(userId) // Parallel with user
+    },
+    async posts() {
+      const user = await this.$.user
+      return fetchPosts(user.id) // Waits only for user
+    },
+    async followers() {
+      const user = await this.$.user
+      return fetchFollowers(user.id) // Parallel with posts
+    }
+  })
+
+  return data
+}
+```
+
+**With Nuxt 3 server routes:**
+
+```typescript
+// server/api/dashboard/[userId].get.ts
+import { all } from 'better-all'
+
+export default defineEventHandler(async (event) => {
+  const userId = getRouterParam(event, 'userId')!
+
+  const dashboard = await all({
+    async user() {
+      return fetchUser(userId)
+    },
+    async systemConfig() {
+      return fetchConfig() // Independent, runs immediately
+    },
+    async profile() {
+      const user = await this.$.user
+      return fetchProfile(user.profileId)
+    },
+    async stats() {
+      const user = await this.$.user
+      return fetchStats(user.id) // Parallel with profile
+    }
+  })
+
+  return dashboard
+})
+```
+
+Benefits of `better-all`:
+- Automatic dependency resolution
+- Maximal parallelization without manual orchestration
+- Type-safe with full inference
+- Works with any JavaScript async code
+- Small bundle size (~1KB)
+
+Reference: [better-all](https://github.com/shuding/better-all) | [MDN Promise.allSettled](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/allSettled)

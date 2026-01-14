@@ -94,21 +94,27 @@ const data = await fetchData() // Blocks entire page
 </template>
 ```
 
-### 1.4 Start Promises Early, Await Late
+### 1.4 Dependency-Based Parallelization with better-all
 
-Start all promises immediately, await when needed.
+For complex dependency chains, use `better-all` to automatically maximize parallelism.
 
-**Incorrect:**
+**Incorrect (manual orchestration):**
 ```typescript
-const post = await fetchPost(postId)
-const author = await fetchAuthor(post.authorId) // Waterfall!
+const [post, config] = await Promise.all([fetchPost(postId), fetchConfig()])
+const profile = await fetchProfile(post.authorId) // Config blocked unnecessarily
 ```
 
-**Correct:**
+**Correct (automatic parallelization):**
 ```typescript
-const postPromise = fetchPost(postId)
-const post = await postPromise
-const author = await fetchAuthor(post.authorId) // Parallel start
+import { all } from 'better-all'
+
+const { post, config, profile } = await all({
+  async post() { return fetchPost(postId) },
+  async config() { return fetchConfig() }, // Runs parallel with post
+  async profile() {
+    return fetchProfile((await this.$.post).authorId) // Parallel with config
+  }
+})
 ```
 
 ### 1.5 Parallelize API Route Dependencies
