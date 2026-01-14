@@ -23,9 +23,10 @@ Comprehensive performance optimization guide for Nuxt 3 and Vue 3 applications, 
 1. [Eliminating Waterfalls](#1-eliminating-waterfalls) — **CRITICAL**
    - 1.1 [Defer Await Until Needed](#11)
    - 1.2 [Parallel Data Fetching with Promise.all()](#12)
-   - 1.3 [Use Multiple useFetch/useAsyncData Calls](#13)
-   - 1.4 [Prevent Waterfall Chains in Server Routes](#14)
-   - 1.5 [Strategic Suspense with Lazy Components](#15)
+   - 1.3 [Dependency-Based Parallelization](#13)
+   - 1.4 [Use Multiple useFetch/useAsyncData Calls](#14)
+   - 1.5 [Prevent Waterfall Chains in Server Routes](#15)
+   - 1.6 [Strategic Suspense with Lazy Components](#16)
 2. [Bundle Size Optimization](#2-bundle-size-optimization) — **CRITICAL**
    - 2.1 [Leverage Auto-Imports](#21)
    - 2.2 [Lazy Load Heavy Components](#22)
@@ -194,7 +195,97 @@ export const useDashboard = () => {
 
 All three fetches execute in parallel automatically because `useFetch` is non-blocking.
 
-### 1.3 Use Multiple useFetch/useAsyncData Calls
+### 1.3 Dependency-Based Parallelization
+
+For operations with partial dependencies, use `better-all` to maximize parallelism. It automatically starts each task at the earliest possible moment.
+
+**Incorrect: profile waits for config unnecessarily**
+
+```typescript
+// server/api/dashboard.get.ts
+export default defineEventHandler(async (event) => {
+  const [user, config] = await Promise.all([
+    fetchUser(event),
+    fetchConfig()
+  ])
+  const profile = await fetchProfile(user.id)
+
+  return { user, config, profile }
+})
+```
+
+**Correct: config and profile run in parallel**
+
+```typescript
+// server/api/dashboard.get.ts
+import { all } from 'better-all'
+
+export default defineEventHandler(async (event) => {
+  const { user, config, profile } = await all({
+    async user() { return fetchUser(event) },
+    async config() { return fetchConfig() },
+    async profile() {
+      return fetchProfile((await this.$.user).id)
+    }
+  })
+
+  return { user, config, profile }
+})
+```
+
+With `Promise.all()`, `profile` must wait for both `user` and `config` to complete, even though it only depends on `user`. With `better-all`, `config` and `profile` run in parallel as soon as `user` completes.
+
+**Complex example:**
+
+```typescript
+// Composable with complex async logic
+export const useComplexData = async () => {
+  const result = await all({
+    async auth() {
+      return await $fetch('/api/auth/session')
+    },
+    async settings() {
+      return await $fetch('/api/settings')
+    },
+    async userData() {
+      const auth = await this.$.auth
+      return await $fetch(`/api/users/${auth.userId}`)
+    },
+    async permissions() {
+      const auth = await this.$.auth
+      return await $fetch(`/api/permissions/${auth.userId}`)
+    },
+    async posts() {
+      const userData = await this.$.userData
+      return await $fetch('/api/posts', {
+        query: { authorId: userData.id }
+      })
+    },
+    async analytics() {
+      const [userData, posts] = await Promise.all([
+        this.$.userData,
+        this.$.posts
+      ])
+      return await $fetch('/api/analytics', {
+        method: 'POST',
+        body: { userId: userData.id, postIds: posts.map(p => p.id) }
+      })
+    }
+  })
+
+  return result
+}
+```
+
+**Installation:**
+
+```bash
+npm install better-all
+```
+
+Reference: [https://github.com/shuding/better-all](https://github.com/shuding/better-all)
+
+### 1.4 Use Multiple useFetch/useAsyncData Calls
 
 Nuxt's composables execute in parallel when called in the same context. Use multiple calls instead of one sequential fetch.
 
@@ -227,7 +318,7 @@ const { data: posts } = await useFetch('/api/posts', {
 
 Both fetches start immediately. The second fetch reactively updates when user data arrives.
 
-### 1.4 Prevent Waterfall Chains in Server Routes
+### 1.5 Prevent Waterfall Chains in Server Routes
 
 In server routes and API endpoints, start independent operations immediately.
 
@@ -261,7 +352,7 @@ export default defineEventHandler(async (event) => {
 })
 ```
 
-### 1.5 Strategic Suspense with Lazy Components
+### 1.6 Strategic Suspense with Lazy Components
 
 Use lazy components with Suspense to show the wrapper UI faster while data loads.
 

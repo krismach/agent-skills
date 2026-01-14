@@ -41,6 +41,7 @@ Rules are prioritized by impact:
 - Use parallel data fetching with Promise.all()
 - Defer await until needed (move into branches)
 - Use parallel composables (useFetch, useAsyncData simultaneously)
+- Use `better-all` for dependency-based parallelization
 - Avoid sequential API calls in composables
 - Stream content with Suspense and lazy components
 
