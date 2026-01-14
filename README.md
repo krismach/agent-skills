@@ -39,30 +39,6 @@ Claim URL:   https://vercel.com/claim-deployment?code=...
 
 ## Installation
 
-### Codex
-
-Follow the [Codex skills guide](https://developers.openai.com/codex/skills/) and place the skill under `$CODEX_HOME/skills`:
-
-```bash
-# from the repo root
-# defaults to ~/.codex if CODEX_HOME is unset
-export CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
-mkdir -p "$CODEX_HOME/skills"
-cp -r skills/vercel-deploy "$CODEX_HOME/skills/"
-```
-
-Codex will auto-discover `SKILL.md` files in that directory on the next start.
-
-### OpenCode
-
-Copy the desired skill folder to your skills directory:
-
-```bash
-cp -r skills/vercel-deploy ~/.claude/skills/
-```
-
-OpenCode discovers skills from `~/.claude/skills/<name>/SKILL.md` automatically. See [OpenCode Skills docs](https://opencode.ai/docs/skills/) for more details.
-
 ### Claude Code
 
 Use the `/install-skill` slash command to install directly from GitHub:
@@ -86,6 +62,30 @@ See the [Claude Code Skills docs](https://code.claude.com/docs/en/skills) for mo
 Add the skill to your project knowledge or paste the contents of `SKILL.md` into your conversation.
 
 No CLI installation or authentication needed.
+
+### Codex
+
+Follow the [Codex skills guide](https://developers.openai.com/codex/skills/) and place the skill under `$CODEX_HOME/skills`:
+
+```bash
+# from the repo root
+# defaults to ~/.codex if CODEX_HOME is unset
+export CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+mkdir -p "$CODEX_HOME/skills"
+cp -r skills/vercel-deploy "$CODEX_HOME/skills/"
+```
+
+Codex will auto-discover `SKILL.md` files in that directory on the next start.
+
+### OpenCode
+
+Copy the desired skill folder to your skills directory:
+
+```bash
+cp -r skills/vercel-deploy ~/.claude/skills/
+```
+
+OpenCode discovers skills from `~/.claude/skills/<name>/SKILL.md` automatically. See [OpenCode Skills docs](https://opencode.ai/docs/skills/) for more details.
 
 ## Usage
 
