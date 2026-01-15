@@ -5,13 +5,12 @@ Complete reference for building high-performance web applications with Hono fram
 ## Table of Contents
 
 1. [Server Performance](#server-performance)
-2. [Database & Caching](#database--caching)
+2. [Async Operations](#async-operations)
 3. [Routing & Middleware](#routing--middleware)
 4. [Response Optimization](#response-optimization)
 5. [Validation & Type Safety](#validation--type-safety)
 6. [Static Files & Assets](#static-files--assets)
-7. [Memory & Resource Management](#memory--resource-management)
-8. [Development Patterns](#development-patterns)
+7. [Development Patterns](#development-patterns)
 
 ## Architecture Overview
 
@@ -72,68 +71,143 @@ app.get('/large-data', async (c) => {
 })
 ```
 
-## Database & Caching
+## Async Operations
 
-### Enable WAL Mode for SQLite
+### Use better-all for Dependency-Based Parallelization
 
-Write-Ahead Logging dramatically improves concurrent read/write performance:
+For operations with partial dependencies, use `better-all` to maximize parallelism:
 
 ```typescript
-import { Database } from 'bun:sqlite'
+import { all } from 'better-all'
+import { Hono } from 'hono'
 
-const db = new Database('app.db')
+const app = new Hono()
 
-// Enable WAL mode - do this once during setup
-db.exec('PRAGMA journal_mode = WAL')
-db.exec('PRAGMA synchronous = NORMAL') // Safe with WAL
-db.exec('PRAGMA cache_size = -64000') // 64MB cache
-db.exec('PRAGMA temp_store = MEMORY')
+// Bad - user and config wait unnecessarily
+app.get('/dashboard', async (c) => {
+  const [user, config] = await Promise.all([
+    fetchUser(c.req.header('Authorization')),
+    fetchConfig()
+  ])
+  const profile = await fetchProfile(user.id) // Waits for both
+
+  return c.json({ user, config, profile })
+})
+
+// Good - config and profile run in parallel
+app.get('/dashboard', async (c) => {
+  const auth = c.req.header('Authorization')
+
+  const { user, config, profile } = await all({
+    async user() { return fetchUser(auth) },
+    async config() { return fetchConfig() },
+    async profile() {
+      // Starts as soon as user resolves
+      return fetchProfile((await this.$.user).id)
+    }
+  })
+
+  return c.json({ user, config, profile })
+})
 ```
 
-### Use Prepared Statements
+### Start Promises Early, Await Late
 
-Bun's SQLite driver caches prepared statements for massive performance gains:
+Initiate async operations early and await only when needed:
 
 ```typescript
-// Use .query() for automatic caching
-const getUser = db.query('SELECT * FROM users WHERE id = ?')
+// Bad - sequential execution
+app.get('/data', async (c) => {
+  const user = await fetchUser()
+  const posts = await fetchPosts()
+  const comments = await fetchComments()
 
-// Execute multiple times efficiently
-const user1 = getUser.get(1)
-const user2 = getUser.get(2)
+  return c.json({ user, posts, comments })
+})
 
-// Or use .prepare() for explicit control
-const stmt = db.prepare('INSERT INTO users (name, email) VALUES (?, ?)')
-stmt.run('Alice', 'alice@example.com')
-stmt.finalize() // Clean up when completely done
+// Good - parallel execution
+app.get('/data', async (c) => {
+  const userPromise = fetchUser()
+  const postsPromise = fetchPosts()
+  const commentsPromise = fetchComments()
+
+  return c.json({
+    user: await userPromise,
+    posts: await postsPromise,
+    comments: await commentsPromise
+  })
+})
+
+// Best - use Promise.all for fully independent operations
+app.get('/data', async (c) => {
+  const [user, posts, comments] = await Promise.all([
+    fetchUser(),
+    fetchPosts(),
+    fetchComments()
+  ])
+
+  return c.json({ user, posts, comments })
+})
 ```
 
-### Implement Query Result Caching
+### Avoid Sequential Awaits in Loops
 
-Cache frequently accessed data:
+Move await outside loops when possible:
 
 ```typescript
-const cache = new Map<string, { data: any, expires: number }>()
+// Bad - serializes all operations
+app.post('/batch', async (c) => {
+  const items = await c.req.json()
+  const results = []
 
-function getCached<T>(key: string, ttl: number, fn: () => T): T {
-  const now = Date.now()
-  const cached = cache.get(key)
-
-  if (cached && cached.expires > now) {
-    return cached.data
+  for (const item of items) {
+    results.push(await processItem(item)) // Waits each time
   }
 
-  const data = fn()
-  cache.set(key, { data, expires: now + ttl })
+  return c.json(results)
+})
+
+// Good - parallelize with Promise.all
+app.post('/batch', async (c) => {
+  const items = await c.req.json()
+
+  const results = await Promise.all(
+    items.map(item => processItem(item))
+  )
+
+  return c.json(results)
+})
+```
+
+### Implement Request-Level Caching
+
+Cache frequently accessed data within request scope:
+
+```typescript
+// Create a request-scoped cache middleware
+app.use('*', async (c, next) => {
+  c.set('cache', new Map())
+  await next()
+})
+
+async function getCachedData(c: Context, key: string, fetcher: () => Promise<any>) {
+  const cache = c.get('cache')
+
+  if (cache.has(key)) {
+    return cache.get(key)
+  }
+
+  const data = await fetcher()
+  cache.set(key, data)
   return data
 }
 
-// Usage
-app.get('/stats', (c) => {
-  const stats = getCached('stats', 60000, () => {
-    return db.query('SELECT COUNT(*) as count FROM users').get()
-  })
-  return c.json(stats)
+app.get('/complex', async (c) => {
+  // Multiple handlers can call this without duplicate fetches
+  const user = await getCachedData(c, 'user', () => fetchUser())
+  const settings = await getCachedData(c, 'user', () => fetchUser()) // Uses cache
+
+  return c.json({ user, settings })
 })
 ```
 
@@ -341,38 +415,7 @@ app.get('/static/:hash/:filename', async (c) => {
 })
 ```
 
-## Memory & Resource Management
-
-### Finalize SQLite Statements
-
-In performance-critical applications, explicitly finalize statements:
-
-```typescript
-const stmt = db.prepare('INSERT INTO logs (message) VALUES (?)')
-
-for (const message of messages) {
-  stmt.run(message)
-}
-
-stmt.finalize() // Free resources
-```
-
-### Use Streams for Large Files
-
-Avoid loading entire files into memory:
-
-```typescript
-app.get('/download/:file', async (c) => {
-  const filename = c.req.param('file')
-  const file = Bun.file(`./downloads/${filename}`)
-
-  // Stream instead of loading into memory
-  c.header('Content-Type', file.type)
-  c.header('Content-Length', file.size.toString())
-
-  return c.body(file.stream())
-})
-```
+## Development Patterns
 
 ### Implement Connection Pooling
 
@@ -398,7 +441,22 @@ app.get('/users', async (c) => {
 })
 ```
 
-## Development Patterns
+### Use Streams for Large Files
+
+Avoid loading entire files into memory:
+
+```typescript
+app.get('/download/:file', async (c) => {
+  const filename = c.req.param('file')
+  const file = Bun.file(`./downloads/${filename}`)
+
+  // Stream instead of loading into memory
+  c.header('Content-Type', file.type)
+  c.header('Content-Length', file.size.toString())
+
+  return c.body(file.stream())
+})
+```
 
 ### Use Context Efficiently
 
@@ -476,15 +534,16 @@ app.use('*', structuredLogger)
 
 ## Production Checklist
 
-- [ ] WAL mode enabled for SQLite
-- [ ] Prepared statements used for all queries
+- [ ] Async operations optimized (use better-all for dependencies)
+- [ ] Promise.all used for independent operations
 - [ ] Compression enabled for text responses
 - [ ] Cache headers set appropriately
 - [ ] Middleware ordered by execution frequency
 - [ ] Static assets served with content hashing
-- [ ] Connection pooling for external databases
+- [ ] Connection pooling for external databases (if applicable)
 - [ ] Structured logging implemented
 - [ ] Error handling with proper cleanup
 - [ ] Memory usage monitored
+- [ ] Bun.serve() used instead of Node.js adapters
 - [ ] TypeScript strict mode enabled
 - [ ] Production environment variables set

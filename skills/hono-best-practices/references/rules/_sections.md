@@ -13,14 +13,11 @@ Examples:
 - `server-use-bun-serve.md` - Use Bun's native server
 - `server-connection-reuse.md` - Enable connection reuse and keep-alive
 
-### `database-*` - Database & Caching (CRITICAL)
-Rules for SQLite optimization and query caching.
+### `async-*` - Async Operations (CRITICAL)
+Rules for optimizing asynchronous operations and parallelization.
 
 Examples:
-- `database-wal-mode.md` - Enable WAL mode for SQLite
-- `database-prepared-statements.md` - Use prepared statements
-- `database-transactions.md` - Use transactions for bulk operations
-- `database-query-caching.md` - Implement query result caching
+- `async-dependency-parallelization.md` - Use better-all for dependency-based parallelization
 
 ### `routing-*` - Routing & Middleware (HIGH)
 Rules for route organization and middleware composition.
@@ -49,12 +46,6 @@ Rules for serving static files efficiently.
 
 Examples:
 - `static-bun-file.md` - Use Bun.file() for static assets
-
-### `memory-*` - Memory & Resource Management (MEDIUM)
-Rules for proper resource cleanup and memory management.
-
-Examples:
-- `memory-finalize-statements.md` - Finalize SQLite statements
 
 ### `dev-*` - Development Patterns (LOW-MEDIUM)
 Rules for code organization and development practices.

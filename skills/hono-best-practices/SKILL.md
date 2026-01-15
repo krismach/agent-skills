@@ -1,13 +1,13 @@
 ---
 name: hono-best-practices
-description: Hono and Bun performance optimization guidelines for building ultra-fast web applications. This skill should be used when writing, reviewing, or refactoring Hono applications to ensure optimal performance patterns. Triggers on tasks involving Hono APIs, Bun runtime optimization, middleware composition, database queries, or performance improvements.
+description: Hono and Bun performance optimization guidelines for building ultra-fast web applications. This skill should be used when writing, reviewing, or refactoring Hono applications to ensure optimal performance patterns. Triggers on tasks involving Hono APIs, Bun runtime optimization, middleware composition, async operations, or performance improvements.
 ---
 
 # Hono Best Practices
 
 ## Overview
 
-Comprehensive performance optimization guide for Hono framework running on Bun runtime, containing 35+ rules across 8 categories. Rules are prioritized by impact to guide automated refactoring and code generation.
+Comprehensive performance optimization guide for Hono framework running on Bun runtime, containing 25+ rules across 7 categories. Rules are prioritized by impact to guide automated refactoring and code generation.
 
 Hono is a small, simple, and ultrafast web framework built on Web Standards. Combined with Bun's JavaScriptCore engine and native optimizations, this stack delivers performance comparable to Rust frameworks while maintaining JavaScript/TypeScript ergonomics.
 
@@ -16,7 +16,7 @@ Hono is a small, simple, and ultrafast web framework built on Web Standards. Com
 Reference these guidelines when:
 - Building new Hono applications or APIs
 - Implementing middleware or route handlers
-- Working with database queries (especially SQLite)
+- Optimizing async operations and parallelization
 - Optimizing response times and throughput
 - Reviewing code for performance issues
 - Migrating from Express, Fastify, or other frameworks
@@ -28,13 +28,12 @@ Rules are prioritized by impact:
 | Priority | Category | Impact |
 |----------|----------|--------|
 | 1 | Server Performance | CRITICAL |
-| 2 | Database & Caching | CRITICAL |
+| 2 | Async Operations | CRITICAL |
 | 3 | Routing & Middleware | HIGH |
 | 4 | Response Optimization | HIGH |
 | 5 | Validation & Type Safety | MEDIUM-HIGH |
 | 6 | Static Files & Assets | MEDIUM |
-| 7 | Memory & Resource Management | MEDIUM |
-| 8 | Development Patterns | LOW-MEDIUM |
+| 7 | Development Patterns | LOW-MEDIUM |
 
 ## Quick Reference
 
@@ -47,12 +46,12 @@ Rules are prioritized by impact:
 - Use worker threads for CPU-intensive tasks
 - Set appropriate concurrency limits
 
-**Database & Caching:**
-- Enable WAL mode for SQLite
-- Use prepared statements and query caching
-- Implement connection pooling for external databases
-- Use Bun's native SQLite driver (3-6x faster than better-sqlite3)
-- Cache frequently accessed data in memory
+**Async Operations:**
+- Use better-all for dependency-based parallelization
+- Parallelize independent async operations
+- Start promises early, await late
+- Avoid sequential awaits for independent operations
+- Use Promise.all() for truly parallel operations
 
 ### High-Impact Routing & Middleware
 
@@ -88,11 +87,11 @@ Rules are prioritized by impact:
 
 ### Memory & Resource Management
 
-- Call .finalize() on SQLite statements when done
 - Use streams for large file operations
-- Implement proper connection pooling
+- Implement proper connection pooling for external databases
 - Clean up resources in error handlers
 - Monitor memory usage in production
+- Avoid memory leaks in long-running processes
 
 ### Development Patterns
 
@@ -111,7 +110,7 @@ Full documentation with code examples is available in:
 
 To look up a specific pattern, grep the rules directory:
 ```
-grep -l "sqlite" references/rules/
+grep -l "async" references/rules/
 grep -l "middleware" references/rules/
 grep -l "stream" references/rules/
 ```
@@ -119,27 +118,26 @@ grep -l "stream" references/rules/
 ## Rule Categories in `references/rules/`
 
 - `server-*` - Bun.serve and HTTP server optimization
-- `database-*` - SQLite and database performance
+- `async-*` - Async operations and parallelization
 - `routing-*` - Route and middleware patterns
 - `response-*` - Response optimization techniques
 - `validation-*` - Validation and type safety
 - `static-*` - Static file serving
-- `memory-*` - Resource management
 - `dev-*` - Development patterns and tooling
 
 ## Performance Benchmarks
 
 Hono + Bun typically achieves:
 - **Router**: Fastest in JavaScript (RegExpRouter)
-- **SQLite**: 3-6x faster than better-sqlite3
 - **Startup**: 4x faster than Node.js on Linux
 - **Response time**: 157ms mean in production workloads
 - **Bundle size**: Under 12KB with hono/tiny preset
+- **Throughput**: Competes with Rust frameworks in benchmarks
 
 ## Key Differences from Node.js Frameworks
 
 1. **No transpilation overhead** - Bun natively supports TypeScript
 2. **Native HTTP server** - No need for separate HTTP library
-3. **Built-in SQLite** - High-performance database included
-4. **Web Standard APIs** - Fetch, Request, Response, Headers
-5. **Zero dependencies** - Hono uses only Web Standard APIs
+3. **Web Standard APIs** - Fetch, Request, Response, Headers
+4. **Zero dependencies** - Hono uses only Web Standard APIs
+5. **Fast startup** - 4x faster cold starts than Node.js
