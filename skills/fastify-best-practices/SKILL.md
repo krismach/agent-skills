@@ -7,7 +7,7 @@ description: Fastify performance optimization and best practices for Node.js app
 
 ## Overview
 
-Comprehensive performance optimization guide for Fastify applications, containing 35+ rules across 7 categories. Rules are prioritized by impact to guide automated refactoring and code generation.
+Comprehensive performance optimization guide for Fastify applications, containing 36+ rules across 7 categories. Rules are prioritized by impact to guide automated refactoring and code generation.
 
 ## When to Apply
 
@@ -43,6 +43,7 @@ Rules are prioritized by impact:
 - Avoid mixing callbacks and promises
 - Always return reply when sending asynchronously
 - Use async/await over callbacks
+- Use `better-all` for dependency-based parallelization (2-10× faster)
 
 **Schema Validation & Serialization:**
 - Define JSON Schema for all routes

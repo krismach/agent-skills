@@ -13,7 +13,7 @@ January 2026
 
 ## Abstract
 
-Comprehensive performance optimization guide for Fastify applications, designed for AI agents and LLMs. Contains 35+ rules across 7 categories, prioritized by impact from critical (async handling, schema validation) to incremental (deployment patterns). Each rule includes detailed explanations, real-world examples comparing incorrect vs. correct implementations, and specific impact metrics to guide automated refactoring and code generation.
+Comprehensive performance optimization guide for Fastify applications, designed for AI agents and LLMs. Contains 36+ rules across 7 categories, prioritized by impact from critical (async handling, schema validation) to incremental (deployment patterns). Each rule includes detailed explanations, real-world examples comparing incorrect vs. correct implementations, and specific impact metrics to guide automated refactoring and code generation.
 
 ---
 
@@ -25,6 +25,7 @@ Comprehensive performance optimization guide for Fastify applications, designed 
    - 1.3 [Always Return reply When Sending Async](#13)
    - 1.4 [Use Lifecycle Hooks Efficiently](#14)
    - 1.5 [Prefer async/await Over Callbacks](#15)
+   - 1.6 [Use Dependency-Based Parallelization](#16)
 2. [Schema Validation & Serialization](#2-schema-validation--serialization) — **CRITICAL**
    - 2.1 [Define JSON Schema for All Routes](#21)
    - 2.2 [Use Serialization Schemas](#22)
@@ -244,6 +245,147 @@ fastify.get('/users', async (request, reply) => {
   // Errors are automatically caught and handled
 })
 ```
+
+### 1.6 Use Dependency-Based Parallelization
+
+For operations with partial dependencies, use `better-all` to maximize parallelism. It automatically starts each task at the earliest possible moment.
+
+**Incorrect: profile waits for config unnecessarily**
+
+```javascript
+fastify.get('/dashboard/:userId', async (request, reply) => {
+  const [user, config] = await Promise.all([
+    getUser(request.params.userId),
+    getAppConfig()
+  ])
+
+  const [posts, profile] = await Promise.all([
+    getUserPosts(user.id),
+    getUserProfile(user.id)
+  ])
+
+  return { user, config, posts, profile }
+})
+```
+
+In this example, `posts` and `profile` wait for both `user` AND `config` to complete, even though they only need `user`.
+
+**Correct: config and profile run in optimal parallel**
+
+```javascript
+import { all } from 'better-all'
+
+fastify.get('/dashboard/:userId', async (request, reply) => {
+  const { user, config, posts, profile } = await all({
+    async user() {
+      return getUser(request.params.userId)
+    },
+    async config() {
+      return getAppConfig()
+    },
+    async posts() {
+      const userData = await this.$.user
+      return getUserPosts(userData.id)
+    },
+    async profile() {
+      const userData = await this.$.user
+      return getUserProfile(userData.id)
+    }
+  })
+
+  return { user, config, posts, profile }
+})
+```
+
+With `better-all`:
+- `user` and `config` start immediately (parallel)
+- `posts` and `profile` start as soon as `user` completes
+- `posts` and `profile` don't wait for `config` to finish
+
+**Complex example with multiple dependency levels:**
+
+```javascript
+import { all } from 'better-all'
+
+fastify.get('/project/:id', async (request, reply) => {
+  const { session, project, permissions, analytics, team, activity } = await all({
+    // Independent: starts immediately
+    async session() {
+      return getSession(request.headers.authorization)
+    },
+
+    // Independent: starts immediately
+    async project() {
+      return getProject(request.params.id)
+    },
+
+    // Depends on session: starts when session completes
+    async permissions() {
+      const s = await this.$.session
+      return getUserPermissions(s.userId, request.params.id)
+    },
+
+    // Depends on project: starts when project completes
+    async analytics() {
+      const p = await this.$.project
+      return getProjectAnalytics(p.id)
+    },
+
+    // Depends on project: starts when project completes (parallel with analytics)
+    async team() {
+      const p = await this.$.project
+      return getProjectTeam(p.teamId)
+    },
+
+    // Depends on both session and project: starts when both complete
+    async activity() {
+      const [s, p] = await Promise.all([this.$.session, this.$.project])
+      return getUserActivityOnProject(s.userId, p.id)
+    }
+  })
+
+  return { project, permissions, analytics, team, activity }
+})
+```
+
+**Execution timeline comparison:**
+
+```
+Sequential (500ms total):
+0ms:   session starts
+100ms: session done, project starts
+200ms: project done, permissions starts
+300ms: permissions done, analytics starts
+400ms: analytics done, team starts
+500ms: all done
+
+Promise.all without dependencies (200ms total):
+0ms:   session, project start
+100ms: both done, permissions, analytics, team, activity start
+200ms: all done
+
+better-all with dependencies (150ms total):
+0ms:   session, project start (parallel)
+50ms:  session done → permissions starts
+100ms: project done → analytics, team start (parallel)
+100ms: both done → activity starts
+150ms: all done
+```
+
+**Installation:**
+
+```bash
+npm install better-all
+```
+
+**When to use:**
+- 3+ async operations with partial dependencies
+- Complex route handlers with multiple data sources
+- Operations where some depend on results from others
+
+**Performance impact:** 2-10× improvement over sequential, 1.5-3× improvement over manual Promise.all chains.
+
+Reference: [https://github.com/shuding/better-all](https://github.com/shuding/better-all)
 
 ---
 
